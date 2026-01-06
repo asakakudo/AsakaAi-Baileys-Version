@@ -12,6 +12,9 @@ const commands = new Map();
 const commandPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandPath).filter(file => file.endsWith('.js'));
 
+global.db = global.db || {};
+const msgStore = {};
+
 async function startBot() {
     const { 
         default: makeWASocket, 
@@ -21,7 +24,8 @@ async function startBot() {
         makeCacheableSignalKeyStore 
     } = await import('@whiskeysockets/baileys');
 
-for (const file of commandFiles) {
+    // Load semua command dari folder /commands
+    for (const file of commandFiles) {
         try {
             const filePath = `./commands/${file}`;
             const { default: command } = await import(filePath);
@@ -31,8 +35,6 @@ for (const file of commandFiles) {
                 console.log(`[LOAD] Perintah dimuat: ${command.name}`);
             }
         } catch (e) {
-            // Biarkan error ini muncul hanya sebagai info, file helper seperti ai-image.js memang akan masuk ke sini
-            // console.warn(`[INFO] File ${file} bukan command atau gagal dimuat: ${e.message}`);
             console.warn(`[SKIP] Gagal memuat command ${file}: ${e.message}`);
         }
     }
@@ -72,18 +74,78 @@ for (const file of commandFiles) {
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
 
+        msgStore[msg.key.id] = msg; // Simpan untuk referensi
+
         const jid = msg.key.remoteJid;
         const body = msg.message.conversation || 
-                     msg.message.extendedTextMessage?.text || 
-                     msg.message.imageMessage?.caption ||
-                     msg.message.videoMessage?.caption || 
-                     "";
+                    msg.message.extendedTextMessage?.text || 
+                    msg.message.imageMessage?.caption ||
+                    "";
+
+        // --- LOGIKA DETEKSI BALASAN ANGKA (1-5) ---
+        const isNumber = /^[1-5]$/.test(body.trim());
+        if (isNumber && global.db[jid] && global.db[jid].type === 'spotify_search') {
+            const session = global.db[jid];
+            const timeElapsed = Date.now() - session.timestamp;
+
+            // Jika lebih dari 5 menit, anggap sesi hangus
+            if (timeElapsed > 5 * 60 * 1000) {
+                delete global.db[jid];
+                return await sock.sendMessage(jid, { text: '❌ Sesi pencarian sudah habis. Silakan cari lagi.' }, { quoted: msg });
+            }
+
+            const selectedIndex = parseInt(body.trim()) - 1;
+            const targetUrl = session.results[selectedIndex];
+            const meta = session.metadata;
+
+            if (targetUrl) {
+                const ytCmd = commands.get('!yt');
+                if (ytCmd) {
+                    const caption = `🎧 *Spotify Downloader*\n\n` +
+                                    `📌 *Judul :* ${meta.title}\n` +
+                                    `👤 *Artis :* ${meta.artists}\n` +
+                                    `💿 *Album :* ${meta.album}\n` +
+                                    `📅 *Rilis :* ${meta.releaseDate}\n` +
+                                    `_Sabar ya, audio sedang didownload..._`;
+
+                    try {
+                        // Gunakan try-catch agar bot tidak crash jika thumbnail 404
+                        await sock.sendMessage(jid, { image: { url: meta.thumbnail }, caption: caption }, { quoted: msg });
+                    } catch (err) {
+                        await sock.sendMessage(jid, { text: caption }, { quoted: msg });
+                    }
+
+                    const fakeMsg = { ...msg, message: { conversation: '!ytmp3' } };
+                    await ytCmd.execute(sock, fakeMsg, [targetUrl]);
+                    
+                    delete global.db[jid]; // Hapus setelah berhasil
+                    return; 
+                }
+            }
+        }
+
+        // 2. LOGIKA AUTO-DOWNLOAD LINK
+        // Regex untuk mendeteksi link Sosmed umum
+        const urlRegex = /https?:\/\/(www\.)?(tiktok\.com|instagram\.com|facebook\.com|fb\.watch|twitter\.com|x\.com|threads\.net|pin\.it|pinterest\.com|open\.spotify\.com|spotify\.link)\/\S+/gi;
+        const match = body.match(urlRegex);
+
+        // Jika ada link dan pesan TIDAK diawali dengan simbol perintah (!)
+        if (match && !body.startsWith('!')) {
+            const url = match[0];
+            console.log(`[AUTO-DL] Mendeteksi link: ${url}`);
+            
+            const allCmd = commands.get('!all'); // Mengacu pada all-in-one.js
+            if (allCmd) {
+                await allCmd.execute(sock, msg, [url]);
+                return; // Berhenti agar tidak diproses lagi oleh perintah lain
+            }
+        }
         
+        // 3. LOGIKA COMMAND BIASA
         const parts = body.trim().split(/\s+/);
         const commandName = parts[0].toLowerCase();
         const args = parts.slice(1);
 
-        // Gabungkan pencarian nama utama dan alias di sini
         const cmd = Array.from(commands.values()).find(c => 
             c.name === commandName || (c.aliases && c.aliases.includes(commandName))
         );
@@ -91,12 +153,7 @@ for (const file of commandFiles) {
         if (cmd) {
             try {
                 await sock.sendPresenceUpdate('composing', jid);
-                // Delay simulasi mengetik
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                
                 await cmd.execute(sock, msg, args);
-                
-                await sock.sendPresenceUpdate('paused', jid);
             } catch (error) {
                 console.error(error);
                 await sock.sendMessage(jid, { text: 'Terjadi kesalahan pada sistem.' });
