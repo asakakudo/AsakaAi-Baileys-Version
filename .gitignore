@@ -26,6 +26,7 @@ replay_pid*
 node_modules/
 .env
 auth_info/
+auth_info_baileys/
 nodemon.json
 
 # Log error
