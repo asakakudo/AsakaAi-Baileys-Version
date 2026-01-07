@@ -77,7 +77,7 @@ export default {
                             throw new Error('Semua server gagal.');
                         }
                     } catch (e3) {
-                        throw new Error('Maaf, semua server (Ryzumi, Itzpire, Siputzx) sedang gangguan.');
+                        throw new Error('Maaf, server sedang gangguan.');
                     }
                 }
             }
@@ -103,9 +103,16 @@ export default {
                     fileName: `${title}.mp3`
                 }, { quoted: m });
             } else {
+                // DEKORASI VIDEO YOUTUBE
+                const ytCaption = `🎬 *YouTube Downloader*\n\n` +
+                                `📌 *Judul :* ${title}\n` +
+                                `🎥 *Tipe  :* Video (MP4)\n` +
+                                `✅ *Status:* Berhasil Terkirim\n\n` +
+                                `_Terimakasih telah menggunakan AsakaAi!_`;
+
                 await sock.sendMessage(jid, { 
                     video: finalBuffer, 
-                    caption: `✅ *YouTube Download Success*\n📝 *Title:* ${title}`,
+                    caption: ytCaption,
                     mimetype: 'video/mp4'
                 }, { quoted: m });
             }

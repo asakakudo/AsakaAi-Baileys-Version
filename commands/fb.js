@@ -2,7 +2,7 @@ import axios from 'axios';
 
 export default {
     name: '!fb',
-    aliases: ['!fbdl', '!facebook'],
+    aliases: ['!fbdl', '!facebook', '!fbvid'],
     execute: async (sock, m, args) => {
         const jid = m.key.remoteJid;
         const url = args[0];
@@ -14,26 +14,35 @@ export default {
         try {
             await sock.sendMessage(jid, { text: '_Sabar, lagi ngambil video Facebook..._' }, { quoted: m });
 
-            // Request ke API Ryzumi sesuai dokumentasi terbaru
+            // 1. Request ke API Ryzumi
             const API_ENDPOINT = 'https://api.ryzumi.vip/api/downloader/fbdl';
             const response = await axios.get(API_ENDPOINT, { params: { url } });
 
             const res = response.data;
 
-            // Validasi status dan data berdasarkan JSON dokumentasi
+            // 2. Validasi
             if (!res || res.status !== true || !res.data || res.data.length === 0) {
-                return await sock.sendMessage(jid, { text: 'Gagal: Video Facebook tidak ditemukan. Pastikan link bersifat publik.' }, { quoted: m });
+                return await sock.sendMessage(jid, { text: 'Gagal: Video Facebook tidak ditemukan. Pastikan link publik.' }, { quoted: m });
             }
 
-            // Ambil media dengan tipe video (biasanya urutan pertama adalah kualitas tertinggi)
-            const videoData = res.data.find(item => item.type === 'video') || res.data[0];
+            // 3. Sorting Kualitas Terbaik (Prioritas HD/720p, lalu SD)
+            // Ryzumi biasanya mengembalikan array, kita cari yang ada label 'HD' atau resolusi tertinggi
+            const videoData = res.data.find(i => i.resolution && i.resolution.includes('HD')) || 
+                              res.data.find(i => i.resolution && i.resolution.includes('720p')) || 
+                              res.data[0];
+
             const videoUrl = videoData.url;
+            
+            // Mengambil detail metadata (Title/Author) tapi MENGABAIKAN caption postingan
+            const title = res.title || 'Facebook Video'; // Judul video (bukan caption user)
+            const author = res.author || '-'; // Nama pengupload (jika ada)
+            const quality = videoData.resolution || 'Standard';
 
             if (!videoUrl) {
-                throw new Error('URL video tidak ditemukan dalam respon API.');
+                throw new Error('URL video tidak valid.');
             }
 
-            // Download media menjadi Buffer agar file terkirim utuh (bukan link)
+            // 4. Download Video menjadi Buffer
             const bufferResponse = await axios.get(videoUrl, {
                 responseType: 'arraybuffer',
                 headers: { 'User-Agent': 'Mozilla/5.0' }
@@ -41,15 +50,22 @@ export default {
 
             const videoBuffer = Buffer.from(bufferResponse.data);
 
-            // Kirim ke WhatsApp (Format Baileys)
+            // 5. Susun Caption WhatsApp (Tanpa deskripsi/caption postingan FB)
+            const msgCaption = `✅ *Facebook Video Success*\n\n` +
+                               `📝 *Title:* ${title}\n` +
+                               `👤 *Author:* ${author}\n` +
+                               `⚙️ *Quality:* ${quality}`;
+
+            // 6. Kirim ke WhatsApp
             await sock.sendMessage(jid, { 
                 video: videoBuffer, 
-                caption: `✅ *Facebook Success*\n📝 *Resolution:* ${videoData.resolution || 'HD'}` 
+                caption: msgCaption,
+                mimetype: 'video/mp4'
             }, { quoted: m });
 
         } catch (err) {
             console.error('=== ERROR FACEBOOK ===', err.message);
-            await sock.sendMessage(jid, { text: 'Gagal mengambil video Facebook. Link mungkin tidak valid atau API sedang gangguan.' }, { quoted: m });
+            await sock.sendMessage(jid, { text: 'Gagal mengambil video Facebook. Link mungkin private atau API error.' }, { quoted: m });
         }
     }
 };

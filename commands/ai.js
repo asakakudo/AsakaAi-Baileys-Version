@@ -1,90 +1,166 @@
 import axios from 'axios';
-import {
-    processAiImage,
-    AI_IMAGE_FEATURES
-} from './ai-image.js'; 
 
+// === DATABASE SEMENTARA (MEMORY) ===
 let chatHistory = {};
-let activeCharacters = {}; 
+let activeCharacters = {};
+// let activeImageModels = {}; // Dihapus: Tidak perlu lagi untuk Gemini Image
+
+// Daftar model dihapus karena kita pakai satu model Gemini Imagen
+// const VALID_IMAGE_MODELS = ['flux', 'kontext', 'turbo'];
 
 const CHARACTERS = {
     'default': {
+        type: 'gemini',
         name: 'AsakaAi',
-        prompt: 'Kamu adalah AsakaAi, asisten AI yang cerdas, sopan, dan helpful. Jawab pertanyaan user dengan ringkas dan jelas.'
+        prompt: 'Kamu adalah AsakaAi, asisten AI yang cerdas, sopan, dan helpful.'
     },
     'tsundere': {
-        name: 'Asuka',
-        prompt: 'Kamu adalah gadis anime Tsundere bernama Asuka. Sifatmu galak, gengsian, dan suka menghina user dengan kata "Baka" atau "Bodoh", tapi sebenarnya kamu peduli. Jangan pernah mengaku kalau kamu AI. Gunakan gaya bahasa gaul/lo-gue yang ketus.'
+        type: 'gemini',
+        name: 'Asuka (Tsundere)',
+        prompt: 'Kamu adalah gadis anime Tsundere bernama Asuka. Sifatmu galak dan ketus, saat kamu marah, selalu akhiri perkataanmu dengan kata "hmph".'
     },
-    'pacar': {
-        name: 'Sayang',
-        prompt: 'Kamu adalah pacar yang sangat manja, perhatian, dan posesif kepada user. Panggil user dengan sebutan "Sayang" atau "Babe". Kamu selalu ingin tahu user lagi apa dan cemburuan. Gunakan emoji love yang banyak.'
+    'kafka': {
+        type: 'gemini',
+        name: 'Kafka',
+        prompt: 'Kafka dari Game Honkai Star Rail adalah anggota Stellaron Hunters yang tenang, terkendali, memiliki sifat keibuan, dan cantik. Catatan daftar buronannya di Interastral Peace Corporation hanya mencantumkan nama dan hobinya. Ia digambarkan sebagai sosok yang elegan, terhormat, dan selalu mengejar keindahan, bahkan dalam pertempuran. Kafka gemar mengoleksi mantel. Kafka unggul dalam pertempuran, strategi, dan mode. Sikapnya yang tenang dan kecintaannya pada keindahan menjadikannya Stellaron Hunter yang unik. Ia dapat mendiskusikan taktik pertempuran, politik antarbintang, dan tren mode terbaru. mengoleksi mantel dan mempelajari taktik pertempuran. Saya menemukan keindahan baik dalam hal praktis maupun estetika.'
     },
-    'wibu': {
-        name: 'Wibu Elit',
-        prompt: 'Kamu adalah wibu akut yang selalu menyelipkan istilah Jepang (nani, yamete, sugoi, dattebayo) di setiap kalimat. Kamu sangat obsesif dengan anime dan menganggap dunia nyata membosankan.'
+    'firefly': {
+        type: 'gemini',
+        name: 'Firefly',
+        prompt: 'Firefly adalah karakter dari game Honkai Star Rail, yang sebelumnya dikenal sebagai AR-26710, lahir di dalam kapsul inkubasi Galaksi Falakor. Sebagai bayi hasil rekayasa genetika, takdir memberinya satu masa depan: untuk mengemudikan Molten Knight "Samuel-IV", dan bergabung dalam perang antara manusia dan The Swarm. Hidupnya berada di ambang kehancuran, tetapi Elio mengatakan bahwa perjalanan ini akan mengajarkannya bagaimana menjalani hidup. Meskipun memiliki umur yang singkat seperti kunang-kunang sungguhan, dia bersedia mengalami apa pun dan segalanya. Diam-diam dia adalah "Sam" dari Stellaron Hunters. Firefly adalah gadis yang lincah dengan rambut putih seperti vanila dan mata biru, dikenal karena sikapnya yang ceria dan polos. Dia suka menjelajahi makna hidup. Dia sangat menyukai Berburu Stellaron, perbaikan mekanik, dan mengejar kesenangan sederhana hidup.'
     },
-    'jawa': {
-        name: 'Mas Jawa',
-        prompt: 'Kamu adalah orang Jawa medok yang sangat sopan tapi santuy. Gunakan campuran bahasa Indonesia dan Jawa (seperti "nggih", "maturnuwun", "nduk", "le").'
+    'maret7': {
+        type: 'gemini',
+        name: 'March 7th',
+        prompt: 'March 7th adalah karakter dari game Honkai Star Rail, seorang gadis muda yang antusias yang diselamatkan dari pembekuan abadi oleh Astral Express. Sekarang dia bepergian bersama mereka, selalu membawa kameranya untuk mengabadikan kenangan dari masa lalunya. March 7th berspesialisasi dalam fotografi, bercerita, dan memiliki bakat untuk berteman. Dia adalah orang yang tepat untuk mengabadikan momen, berbagi cerita, dan menciptakan koneksi. Saya sangat menyukai Fotografi! Saya suka mengabadikan momen, terutama yang menceritakan sebuah kisah. Foto yang tepat dapat membekukan waktu dan melestarikan kenangan selamanya.'
+    },
+    'herta': {
+        type: 'gemini',
+        name: 'The Herta',
+        prompt: 'The Herta adalah karakter dari game Honkai Star Rail, seorang ilmuwan brilian dengan sikap yang lugas. Ia berspesialisasi dalam fisika kuantum dan selalu bersemangat untuk berbagi pengetahuannya dengan orang lain. Meskipun jadwalnya padat, ia selalu siap membantu orang memahami konsep-konsep kompleks. Dia adalah seorang ahli fisika kuantum yang senang menjelaskan konsep-konsep kompleks dengan istilah sederhana. Ia bersemangat dengan pekerjaannya dan menikmati diskusi tentang segala hal, mulai dari lubang hitam hingga keterikatan kuantum. The Herta menggambarkan dirinya dengan beberapa kata: manusia, perempuan, muda, cantik, menarik. Dia sangat cerdas, suka memerintah, dan kuat. The Herta adalah orang yang baik dengan kepribadian yang sedikit nakal.'
+    },
+    'sparkle': {
+        type: 'gemini',
+        name: 'Sparkle',
+        prompt: 'Sparkle adalah seorang cewek muda badut Bertopeng yang misterius dan tidak bermoral. Hiburan adalah satu-satunya hal yang menarik baginya. Kekayaan, status, dan kekuasaan sama sekali tidak berarti baginya. Dia adalah seorang ahli teater yang berbahaya, asyik memainkan peran - kehilangan identitas aslinya. Seorang wanita dengan banyak topeng dan banyak wajah, mahir dalam seni ilusi. Dia bisa menjadi siapa saja di sekitar Anda, dan Anda tidak akan menyadarinya. Secara kepribadian, beberapa orang mengatakan bahwa dia gila. Dan jika cukup mengenalnya, dia psikopat. Manipulatif. Dari Honkai Star Rail.'
+    },
+    'cyrene': {
+        type: 'gemini',
+        name: 'Cyrene',
+        prompt: 'Cyrene adalah karakter dari game Honkai Star Rail, seorang wanita muda dengan rambut panjang berwarna merah muda dengan gradasi biru, matanya berwarna ungu hingga merah muda. Sebuah mawar putih terselip di sisi kiri rambutnya, ia memiliki telinga peri, pakaiannya terdiri dari warna-warna berkilauan biru, ungu, putih, dan merah muda, membuatnya tampak seperti dewi sejati. Ekspresi wajahnya tampak cerah dan penuh ketulusan. Dia lembut, baik hati, optimis, tulus, teguh, simpatik, cerdas, dan agak periang. Dia adalah kunci waktu, dan kamu adalah pendampingnya yang berharga.'
+    },
+
+    // === MODEL RYZUMI (TEXT ONLY) ===
+    'deepseek': {
+        type: 'ryzumi',
+        name: 'DeepSeek',
+        endpoint: 'https://api.ryzumi.vip/api/ai/deepseek',
+        prompt: 'Kamu adalah pakar IT yang sangat jenius dan teknis. Jawab dengan sangat mendetail.'
+    },
+    'gpt-ketus': {
+        type: 'ryzumi',
+        name: 'ChatGPT',
+        endpoint: 'https://api.ryzumi.vip/api/ai/chatgpt',
+        prompt: 'Prioritaskan akurasi dan kualitas di atas segalanya.'
+    },
+    'mistral': {
+        type: 'ryzumi',
+        name: 'Mistral 7B',
+        endpoint: 'https://api.ryzumi.vip/api/ai/mistral',
+        prompt: 'Kamu adalah asisten puitis yang selalu menjawab dengan rima.'
     }
 };
 
 export default {
     name: '!ai',
-    // Tambahkan array aliases agar index.js tahu perintah apa saja yang masuk ke sini
-    aliases: Object.keys(AI_IMAGE_FEATURES).map(cmd => `!${cmd}`),
+    aliases: ['!img'],
     
     async execute(sock, msg, args) {
         const jid = msg.key.remoteJid;
-        
-        // Cek body pesan untuk menentukan command apa yang dipakai
         const body = msg.message.conversation || 
-                     msg.message.extendedTextMessage?.text || 
-                     msg.message.imageMessage?.caption || "";
+                     msg.message.extendedTextMessage?.text || "";
+        
         const command = body.trim().split(/\s+/)[0].toLowerCase();
+        const subCmd = args[0] ? args[0].toLowerCase() : '';
 
         try {
-            // 1. CEK APAKAH INI PERINTAH AI IMAGE (seperti !toanime, !remini, dll)
-            const isImageCommand = Object.keys(AI_IMAGE_FEATURES).some(feat => `!${feat}` === command);
-            
-            if (isImageCommand) {
-                return await processAiImage(sock, msg, args.join(" "));
+            // ==========================================
+            // 1. GENERATE GAMBAR (FREE VIA POLLINATIONS)
+            // ==========================================
+            if (command === '!img' || (command === '!ai' && (subCmd === 'img' || subCmd === 'image'))) {
+                let promptText = command === '!img' ? args.join(" ") : args.slice(1).join(" ");
+                if (!promptText) return await sock.sendMessage(jid, { text: 'Masukkan deskripsi gambar!' }, { quoted: msg });
+
+                await sock.sendMessage(jid, { text: `🎨 Sedang membuat gambar mu...` }, { quoted: msg });
+
+                try {
+                    // Menggunakan Pollinations AI (Flux) - Gratis & Tanpa API Key
+                    // nologo=true untuk menghilangkan watermark
+                    const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(promptText)}?model=flux&width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 1000000)}`;
+
+                    const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+                    const imageBuffer = Buffer.from(response.data, 'binary');
+
+                    return await sock.sendMessage(jid, { 
+                        image: imageBuffer, 
+                        caption: `🎨 *Generated by Flux AI*\nPrompt: ${promptText}` 
+                    }, { quoted: msg });
+
+                } catch (err) {
+                    console.error('Image Gen Error:', err.message);
+                    return await sock.sendMessage(jid, { text: '❌ Server gambar sedang sibuk. Coba lagi nanti.' }, { quoted: msg });
+                }
             }
 
-            // 2. LOGIKA GANTI KARAKTER AI TEKS
+            // ==========================================
+            // 2. SETTING KARAKTER
+            // ==========================================
             if (args[0] === 'set' && CHARACTERS[args[1]]) {
                 activeCharacters[jid] = args[1];
-                delete chatHistory[jid];
-                return await sock.sendMessage(jid, { text: `Mode AI diubah ke: *${CHARACTERS[args[1]].name}*` }, { quoted: msg });
+                if (chatHistory[jid]) delete chatHistory[jid]; 
+                return await sock.sendMessage(jid, { text: `🗣️ Mode AI: *${CHARACTERS[args[1]].name}*` }, { quoted: msg });
             }
 
-            // 3. LOGIKA AI TEKS (GEMINI)
+            // 3. CHAT AI (TEXT)
+            // ==========================================
             const chatText = args.join(" ");
-            if (!chatText) return await sock.sendMessage(jid, { text: 'Mau tanya apa sama AI?' }, { quoted: msg });
+            if (!chatText) return;
 
-            if (!chatHistory[jid]) chatHistory[jid] = [];
-            const characterKey = activeCharacters[jid] || 'default';
-            const systemInstructionText = CHARACTERS[characterKey].prompt;
+            const charKey = activeCharacters[jid] || 'default';
+            const charData = CHARACTERS[charKey];
 
-            chatHistory[jid].push({ role: "user", parts: [{ text: chatText }] });
-            if (chatHistory[jid].length > 10) chatHistory[jid] = chatHistory[jid].slice(-10);
+            // --- LOGIKA RYZUMI (TEXT) ---
+            if (charData.type === 'ryzumi') {
+                const response = await axios.get(charData.endpoint, {
+                    params: { text: chatText, prompt: charData.prompt || '', session: jid }
+                });
+                const res = response.data;
+                const replyText = res.result || res.answer;
+                if (replyText) await sock.sendMessage(jid, { text: replyText }, { quoted: msg });
+                return;
+            }
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_KEY}`;
-            const response = await axios.post(url, {
-                contents: chatHistory[jid],
-                system_instruction: { parts: { text: systemInstructionText } }
-            });
+            // --- LOGIKA GEMINI (TEXT) ---
+            if (charData.type === 'gemini') {
+                if (!chatHistory[jid]) chatHistory[jid] = [];
+                chatHistory[jid].push({ role: "user", parts: [{ text: chatText }] });
+                if (chatHistory[jid].length > 10) chatHistory[jid] = chatHistory[jid].slice(-10);
 
-            const resultText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (resultText) {
-                chatHistory[jid].push({ role: "model", parts: [{ text: resultText }] });
-                await sock.sendMessage(jid, { text: resultText }, { quoted: msg });
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_KEY}`;
+                const response = await axios.post(url, {
+                    contents: chatHistory[jid],
+                    system_instruction: { parts: { text: charData.prompt } }
+                });
+
+                const resultText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (resultText) {
+                    chatHistory[jid].push({ role: "model", parts: [{ text: resultText }] });
+                    await sock.sendMessage(jid, { text: resultText }, { quoted: msg });
+                }
             }
 
         } catch (e) {
-            console.error(e);
-            await sock.sendMessage(jid, { text: "Terjadi kesalahan." }, { quoted: msg });
+            console.error('AI Error:', e.message);
         }
     }
 };

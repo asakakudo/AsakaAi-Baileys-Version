@@ -75,8 +75,6 @@ export default {
 
             // === MODE 1: MEME (GAMBAR + TEKS) ===
             if (isImage && text) {
-                await sock.sendMessage(jid, { text: '_Memproses meme stiker..._' }, { quoted: msg });
-
                 const buffer = await downloadMediaMessage(
                     { key: { remoteJid: jid, id: 'meme' }, message: targetMsg },
                     'buffer', {}, { logger: null }
@@ -99,31 +97,50 @@ export default {
             }
 
             // === MODE 2: MEDIA POLOS (GAMBAR/VIDEO/GIF) ===
+            // --- INI BAGIAN YANG DIUPDATE UNTUK AUTO-COMPRESS ---
             if (isImage || isVideo || isSticker) {
-                const loadingText = isVideo ? '_Sedang konversi GIF/Video (mohon tunggu)..._' : '_Sedang membuat stiker..._';
-                await sock.sendMessage(jid, { text: loadingText }, { quoted: msg });
-
                 const buffer = await downloadMediaMessage(
                     { key: { remoteJid: jid, id: 'media' }, message: targetMsg },
                     'buffer', {}, { logger: null }
                 );
 
-                const stickerOptions = {
-                    pack: 'AsakaPack', 
-                    author: 'AsakaAi',
-                    type: StickerTypes.FULL,
-                    quality: isVideo ? 17 : 50, 
+                // 1. Settingan Awal (Kualitas Tinggi Sesuai Keinginanmu)
+                let quality = isVideo ? 50 : 70; // Video start 50, Gambar start 70
+                let fps = 30; // FPS start 30 (Smooth)
+
+                const createSticker = (q, f) => {
+                    return new Sticker(buffer, {
+                        pack: 'AsakaPack', 
+                        author: 'AsakaAi',
+                        type: StickerTypes.FULL,
+                        quality: q,
+                        fps: isVideo ? f : undefined // FPS hanya efek ke video
+                    });
                 };
 
-                // PENTING: FPS 10 agar work di WA Mobile (Android/iOS)
-                // Kalau FPS tinggi, file jadi besar & error di HP
-                if (isVideo) {
-                    stickerOptions.fps = 20; 
+                let sticker = createSticker(quality, fps);
+                let stickerBuffer = await sticker.toBuffer();
+
+                // 2. Loop Cek Ukuran File (Max 1MB / 1.000.000 bytes)
+                const MAX_SIZE = 1000000;
+                
+                while (stickerBuffer.length > MAX_SIZE && quality > 10) {
+                    // Jika kegedean, kurangi kualitas
+                    quality -= 10;
+                    
+                    // Jika video dan masih kegedean, kurangi FPS juga biar ukuran drop drastis
+                    if (isVideo && fps > 15) {
+                        fps -= 5;
+                    }
+
+                    // console.log(`[COMPRESS] Size: ${stickerBuffer.length} > 1MB. Retrying with Q:${quality} FPS:${fps}`);
+                    
+                    sticker = createSticker(quality, fps);
+                    stickerBuffer = await sticker.toBuffer();
                 }
 
-                const sticker = new Sticker(buffer, stickerOptions);
-
-                await sock.sendMessage(jid, await sticker.toMessage(), { quoted: msg });
+                // 3. Kirim Buffer yang sudah lolos seleksi
+                await sock.sendMessage(jid, { sticker: stickerBuffer }, { quoted: msg });
                 return;
             }
 
@@ -170,7 +187,6 @@ async function drawTextOverlay(ctx, text) {
     const x = 256;
     const y = 492;
 
-    // Definisikan lines di scope ini
     let lines = []; 
 
     // Render Teks
@@ -203,21 +219,12 @@ async function drawTextOverlay(ctx, text) {
         let emojiX, emojiY;
 
         if (lines.length > 0) {
-            // === LOGIKA POSISI BARU ===
-            // Ambil baris paling bawah (lines[0] karena sudah di-reverse)
-            // Kita ukur lebar teksnya (l.trim())
             const lastLine = lines[0].trim();
             const metrics = ctx.measureText(lastLine);
             const textWidth = metrics.width;
-
-            // X = Pusat (256) + Setengah Lebar Teks + Padding (12px)
             emojiX = 256 + (textWidth / 2) + 12;
-            
-            // Y = Baseline (y) - Ukuran Emoji - Lift Up (15px)
-            // '15px' ini agar emoji naik dikit & sejajar visual dengan huruf Impact
             emojiY = y - emojiSize - 12; 
         } else {
-            // Kalau cuma emoji doang (tanpa teks), taruh di tengah-tengah canvas
             emojiX = 256 - (emojiSize / 2);
             emojiY = 256 - (emojiSize / 2);
         }
@@ -226,7 +233,6 @@ async function drawTextOverlay(ctx, text) {
             const img = await loadEmojiImage(emoji);
             if (img) {
                 ctx.drawImage(img, emojiX, emojiY, emojiSize, emojiSize);
-                // Geser ke kanan kalau emojinya banyak
                 emojiX += emojiSize + 5;
             }
         }

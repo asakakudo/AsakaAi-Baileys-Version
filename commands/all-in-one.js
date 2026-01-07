@@ -62,7 +62,6 @@ export default {
                 }
             }
 
-            // 2. JALUR PLATFORM LAIN
             const response = await axios.get(`https://api.ryzumi.vip/api/downloader/all-in-one`, { 
                 params: { url: url },
                 timeout: 30000 
@@ -71,21 +70,60 @@ export default {
 
             let filteredMedias = [];
             if (res.medias && res.medias.length > 0) {
+                // Perbaikan: Tambahkan filter 'audio' untuk SoundCloud
+                const audios = res.medias.filter(media => media.type === 'audio');
                 const videos = res.medias.filter(media => media.type === 'video');
-                filteredMedias = videos.length > 0 ? [videos[0]] : res.medias.filter(media => media.type === 'image');
+                const images = res.medias.filter(media => media.type === 'image');
+
+                if (audios.length > 0) {
+                    filteredMedias = [audios[0]]; // Utamakan audio jika ada (SoundCloud)
+                } else if (videos.length > 0) {
+                    filteredMedias = [videos[0]]; 
+                } else {
+                    filteredMedias = images;
+                }
             } else if (res.url || res.link) {
                 filteredMedias = [{ url: res.url || res.link, type: 'video' }];
             }
 
+            if (filteredMedias.length === 0) throw new Error('Media tidak ditemukan.');
+
             for (const media of filteredMedias) {
-                const bufferResponse = await axios.get(media.url, { responseType: 'arraybuffer', timeout: 60000 });
-                const mediaBuffer = Buffer.from(bufferResponse.data);
-                
-                if (media.type === 'video') {
-                    await sock.sendMessage(jid, { video: mediaBuffer, caption: `✅ *Success*` }, { quoted: m });
-                } else {
-                    await sock.sendMessage(jid, { image: mediaBuffer }, { quoted: m });
-                }
+            // ... di dalam loop for (const media of filteredMedias) ...
+            const bufferResponse = await axios.get(media.url, { responseType: 'arraybuffer', timeout: 60000 });
+            const mediaBuffer = Buffer.from(bufferResponse.data);
+
+            // Buat dekorasi teks
+            const detailText = `📁 *Media Downloader*\n\n` +
+                            `📌 *Judul :* ${res.title?.substring(0, 150) || '-'}\n` +
+                            `🌐 *Sumber :* ${url.split('/')[2]}\n` +
+                            `✅ *Status :* Sukses Terunduh\n\n` +
+                            `_AsakaAiThoughtPartner_`;
+
+            if (media.type === 'audio') {
+                // Kirim detail dulu (Thumbnail + Teks) agar tidak sepi
+                await sock.sendMessage(jid, { 
+                    image: { url: res.thumbnail || 'https://cdn-icons-png.flaticon.com/512/2111/2111624.png' }, 
+                    caption: detailText 
+                }, { quoted: m });
+
+                // Kirim Audio
+                await sock.sendMessage(jid, { 
+                    audio: mediaBuffer, 
+                    mimetype: 'audio/mp4',
+                    fileName: `${res.title || 'audio'}.mp3`
+                }, { quoted: m });
+            } else if (media.type === 'video') {
+                // Kirim Video beserta detailnya di CAPTION
+                await sock.sendMessage(jid, { 
+                    video: mediaBuffer, 
+                    caption: detailText,
+                    mimetype: 'video/mp4'
+                }, { quoted: m });
+            } else {
+                // Untuk Gambar
+                await sock.sendMessage(jid, { image: mediaBuffer, caption: detailText }, { quoted: m });
+            }
             }
         } catch (err) {
             console.error('=== ERROR ALL-DL ===', err.message);

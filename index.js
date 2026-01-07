@@ -32,6 +32,10 @@ async function startBot() {
             
             if (command && command.name) {
                 commands.set(command.name, command);
+                // Daftarkan aliases juga ke map agar pencarian lebih cepat
+                if (command.aliases && Array.isArray(command.aliases)) {
+                    command.aliases.forEach(alias => commands.set(alias, command));
+                }
                 console.log(`[LOAD] Perintah dimuat: ${command.name}`);
             }
         } catch (e) {
@@ -66,7 +70,7 @@ async function startBot() {
             console.log('Koneksi terputus, mencoba menyambung kembali:', shouldReconnect);
             if (shouldReconnect) startBot();
         } else if (connection === 'open') {
-            console.log('AsaAi Ready!');
+            console.log('AsakaAi Ready!');
         }
     });
 
@@ -77,9 +81,13 @@ async function startBot() {
         msgStore[msg.key.id] = msg; // Simpan untuk referensi
 
         const jid = msg.key.remoteJid;
+        
+        // === PERBAIKAN DI SINI ===
+        // Menambahkan videoMessage?.caption agar GIF/Video dengan caption terbaca
         const body = msg.message.conversation || 
                     msg.message.extendedTextMessage?.text || 
                     msg.message.imageMessage?.caption ||
+                    msg.message.videoMessage?.caption || 
                     "";
 
         // --- LOGIKA DETEKSI BALASAN ANGKA (1-5) ---
@@ -88,7 +96,6 @@ async function startBot() {
             const session = global.db[jid];
             const timeElapsed = Date.now() - session.timestamp;
 
-            // Jika lebih dari 5 menit, anggap sesi hangus
             if (timeElapsed > 5 * 60 * 1000) {
                 delete global.db[jid];
                 return await sock.sendMessage(jid, { text: '❌ Sesi pencarian sudah habis. Silakan cari lagi.' }, { quoted: msg });
@@ -109,7 +116,6 @@ async function startBot() {
                                     `_Sabar ya, audio sedang didownload..._`;
 
                     try {
-                        // Gunakan try-catch agar bot tidak crash jika thumbnail 404
                         await sock.sendMessage(jid, { image: { url: meta.thumbnail }, caption: caption }, { quoted: msg });
                     } catch (err) {
                         await sock.sendMessage(jid, { text: caption }, { quoted: msg });
@@ -118,26 +124,24 @@ async function startBot() {
                     const fakeMsg = { ...msg, message: { conversation: '!ytmp3' } };
                     await ytCmd.execute(sock, fakeMsg, [targetUrl]);
                     
-                    delete global.db[jid]; // Hapus setelah berhasil
+                    delete global.db[jid]; 
                     return; 
                 }
             }
         }
 
         // 2. LOGIKA AUTO-DOWNLOAD LINK
-        // Regex untuk mendeteksi link Sosmed umum
         const urlRegex = /https?:\/\/(www\.)?(tiktok\.com|instagram\.com|facebook\.com|fb\.watch|twitter\.com|x\.com|threads\.net|pin\.it|pinterest\.com|open\.spotify\.com|spotify\.link)\/\S+/gi;
         const match = body.match(urlRegex);
 
-        // Jika ada link dan pesan TIDAK diawali dengan simbol perintah (!)
         if (match && !body.startsWith('!')) {
             const url = match[0];
             console.log(`[AUTO-DL] Mendeteksi link: ${url}`);
             
-            const allCmd = commands.get('!all'); // Mengacu pada all-in-one.js
+            const allCmd = commands.get('!all'); 
             if (allCmd) {
                 await allCmd.execute(sock, msg, [url]);
-                return; // Berhenti agar tidak diproses lagi oleh perintah lain
+                return;
             }
         }
         
@@ -146,9 +150,9 @@ async function startBot() {
         const commandName = parts[0].toLowerCase();
         const args = parts.slice(1);
 
-        const cmd = Array.from(commands.values()).find(c => 
-            c.name === commandName || (c.aliases && c.aliases.includes(commandName))
-        );
+        // Pencarian command (Support Alias)
+        const cmd = commands.get(commandName) || 
+                    Array.from(commands.values()).find(c => c.aliases && c.aliases.includes(commandName));
 
         if (cmd) {
             try {
