@@ -13,8 +13,6 @@ export default {
 
         try {
             await sock.sendMessage(jid, { text: '_Sabar, lagi ngambil media dari Twitter/X..._' }, { quoted: m });
-
-            // 1. Request ke API Ryzumi sesuai dokumentasi curl kamu
             const API_ENDPOINT = 'https://api.ryzumi.vip/api/downloader/twitter';
             const response = await axios.get(API_ENDPOINT, {
                 params: { url: url }
@@ -22,17 +20,13 @@ export default {
 
             const res = response.data;
 
-            // 2. Validasi respon berdasarkan JSON dokumentasi
             if (!res || res.status !== true || !res.media || res.media.length === 0) {
                 return await sock.sendMessage(jid, { text: 'Gagal: Media Twitter tidak ditemukan atau link tidak valid.' }, { quoted: m });
             }
 
-            // 3. Ambil media kualitas tertinggi (biasanya item terakhir atau sesuai index 0)
             const mediaItem = res.media[res.media.length - 1]; 
             const mediaUrl = mediaItem.url;
-            const mediaType = res.type; // "video" atau "image"
-
-            // 4. Download Media menjadi Buffer
+            const mediaType = res.type; 
             const bufferResponse = await axios.get(mediaUrl, {
                 responseType: 'arraybuffer',
                 headers: { 'User-Agent': 'Mozilla/5.0' }
@@ -40,7 +34,6 @@ export default {
 
             const mediaBuffer = Buffer.from(bufferResponse.data);
 
-            // 5. Kirim ke WhatsApp berdasarkan tipe medianya
             if (mediaType === 'video') {
                 await sock.sendMessage(jid, { 
                     video: mediaBuffer, 

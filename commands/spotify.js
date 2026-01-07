@@ -12,14 +12,12 @@ export default {
         try {
             await sock.sendMessage(jid, { text: '_Mencari kecocokan lagu..._' }, { quoted: m });
 
-            // 1. Ambil Metadata Spotify
             const spotRes = await axios.get(`https://api.ryzumi.vip/api/downloader/spotify`, { params: { url } });
             if (!spotRes.data.success) throw new Error('Link Spotify tidak valid.');
 
             const { title, artists } = spotRes.data.metadata;
             const cleanQuery = `${title} ${artists}`.replace(/[^\w\s]/gi, '');
 
-            // 2. Cari di YouTube (Gunakan API Siputzx yang lebih stabil untuk search)
             const searchRes = await axios.get(`https://api.siputzx.my.id/api/s/youtube`, { 
                 params: { query: cleanQuery } 
             });
@@ -38,7 +36,6 @@ export default {
                     artists: meta.artists,
                     album: meta.album || '-',
                     releaseDate: meta.releaseDate || '-',
-                    // Ganti ke link yang pasti aktif ini
                     thumbnail: meta.thumbnail || backupThumb || 'https://cdn-icons-png.flaticon.com/512/2111/2111624.png' 
                 },
                 timestamp: Date.now()
@@ -50,8 +47,7 @@ export default {
                     delete global.db[jid];
                 }
             }, timeoutLimit);
-
-            // 4. Kirim daftar lagu ke user
+            
             let listText = `🎧 *Spotify Matcher*\nLagu: *${title}*\n\n`;
             results.forEach((v, i) => {
                 listText += `${i + 1}. ${v.title} (${v.duration.timestamp})\n`;

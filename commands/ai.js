@@ -98,9 +98,6 @@ export default {
     
     async execute(sock, msg, args) {
         const jid = msg.key.remoteJid;
-        // Ambil nama pengirim dari WhatsApp
-        const userName = msg.pushName || "Sayang"; 
-        
         const body = msg.message.conversation || 
                      msg.message.extendedTextMessage?.text || "";
         
@@ -109,17 +106,45 @@ export default {
 
         try {
             // ==========================================
-            // 1. GENERATE GAMBAR (FREE VIA POLLINATIONS)
+            // 1. FITUR SET KARAKTER (!ai set)
+            // ==========================================
+            if (subCmd === 'set') {
+                const targetChar = args[1]?.toLowerCase();
+
+                // Jika user memasukkan nama karakter yang valid
+                if (targetChar && CHARACTERS[targetChar]) {
+                    activeCharacters[jid] = targetChar;
+                    if (chatHistory[jid]) delete chatHistory[jid]; // Reset memory
+                    
+                    return await sock.sendMessage(jid, { 
+                        text: `✅ Mode Berhasil Diubah!\nSekarang aku adalah: *${CHARACTERS[targetChar].name}*` 
+                    }, { quoted: msg });
+                } 
+                
+                // Jika user cuma ketik "!ai set" ATAU nama karakter salah -> Tampilkan Menu
+                let menuText = "🎭 *PILIH KARAKTER AI*\n\nSilakan pilih kepribadian untuk AsakaAi:\n\n";
+                
+                // Loop otomatis semua karakter yang ada di objek CHARACTERS
+                for (const [key, val] of Object.entries(CHARACTERS)) {
+                    menuText += `🔹 *${key}* - ${val.name}\n`;
+                }
+
+                menuText += "\n➡️ *Cara Pakai:* `!ai set [nama]`\nContoh: `!ai set kafka`";
+
+                return await sock.sendMessage(jid, { text: menuText }, { quoted: msg });
+            }
+
+            // ==========================================
+            // 2. GENERATE GAMBAR (Flux Free)
             // ==========================================
             if (command === '!img' || (command === '!ai' && (subCmd === 'img' || subCmd === 'image'))) {
                 let promptText = command === '!img' ? args.join(" ") : args.slice(1).join(" ");
                 if (!promptText) return await sock.sendMessage(jid, { text: 'Masukkan deskripsi gambar!' }, { quoted: msg });
 
-                await sock.sendMessage(jid, { text: `🎨 Sedang membuat gambar mu...` }, { quoted: msg });
+                await sock.sendMessage(jid, { text: `🎨 Sedang melukis dengan model *Flux*...` }, { quoted: msg });
 
                 try {
-                    // Menggunakan Pollinations AI (Flux) - Gratis & Tanpa API Key
-                    // nologo=true untuk menghilangkan watermark
+                    // Pollinations AI (Flux) - Gratis, No API Key, No Limit
                     const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(promptText)}?model=flux&width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 1000000)}`;
 
                     const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
@@ -132,19 +157,11 @@ export default {
 
                 } catch (err) {
                     console.error('Image Gen Error:', err.message);
-                    return await sock.sendMessage(jid, { text: '❌ Server gambar sedang sibuk. Coba lagi nanti.' }, { quoted: msg });
+                    return await sock.sendMessage(jid, { text: '❌ Gagal membuat gambar.' }, { quoted: msg });
                 }
             }
 
             // ==========================================
-            // 2. SETTING KARAKTER
-            // ==========================================
-            if (args[0] === 'set' && CHARACTERS[args[1]]) {
-                activeCharacters[jid] = args[1];
-                if (chatHistory[jid]) delete chatHistory[jid]; 
-                return await sock.sendMessage(jid, { text: `🗣️ Mode AI: *${CHARACTERS[args[1]].name}*` }, { quoted: msg });
-            }
-
             // 3. CHAT AI (TEXT)
             // ==========================================
             const chatText = args.join(" ");
@@ -153,26 +170,37 @@ export default {
             const charKey = activeCharacters[jid] || 'default';
             const charData = CHARACTERS[charKey];
 
+            // --- CABANG RYZUMI ---
+            if (charData.type === 'ryzumi') {
+                const response = await axios.get(charData.endpoint, {
+                    params: { text: chatText, prompt: charData.prompt || '', session: jid }
+                });
+                const res = response.data;
+                const replyText = res.result || res.answer;
+                if (replyText) await sock.sendMessage(jid, { text: replyText }, { quoted: msg });
+                return;
+            }
+
+            // --- CABANG GEMINI ---
             if (charData.type === 'gemini') {
                 if (!chatHistory[jid]) chatHistory[jid] = [];
-                // Batasi history sebelum menambah pesan baru
                 if (chatHistory[jid].length > 10) chatHistory[jid] = chatHistory[jid].slice(-10);
 
-                // 1. Siapkan wadah pesan (parts)
+                // 1. Siapkan bagian pesan
                 const parts = [{ text: chatText }];
 
-                // 2. Cek apakah ada gambar
+                // 2. Cek Gambar (Vision)
                 const imageBuffer = await getImageBuffer(msg);
                 if (imageBuffer) {
                     parts.push({
                         inline_data: {
-                            mime_type: "image/jpeg", // Gunakan jpeg/png agar aman
+                            mime_type: "image/jpeg",
                             data: imageBuffer.toString('base64')
                         }
                     });
                 }
-                
-                // 3. Simpan ke history (PENTING: Gunakan variabel 'parts' tadi)
+
+                // 3. Masukkan ke history
                 chatHistory[jid].push({ role: "user", parts: parts });
 
                 const userName = msg.pushName || "User";
@@ -186,14 +214,13 @@ export default {
                         PERANMU: ${charData.prompt}
                         
                         INSTRUKSI GAYA:
-                        - Kamu harus berakting sepenuhnya sebagai karakter tersebut. Jangan lupa research sifat sifat karakter tersebut dari internet.
+                        - Kamu harus berakting sepenuhnya sebagai karakter tersebut.
                         - Gunakan tanda bintang (*) untuk mendeskripsikan ekspresi.
                         - Seringlah menyebut nama user (${userName}).
                         - Jangan menjawab sebagai AI, tetaplah dalam karakter!
                     `;
                 }
 
-                // 4. Kirim Request
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_KEY}`;
                 
                 const response = await axios.post(url, {
@@ -208,51 +235,13 @@ export default {
                 }
             }
 
-                        // --- LOGIKA RYZUMI (TEXT) ---
-            if (charData.type === 'ryzumi') {
-                const response = await axios.get(charData.endpoint, {
-                    params: { text: chatText, prompt: charData.prompt || '', session: jid }
-                });
-                const res = response.data;
-                const replyText = res.result || res.answer;
-                if (replyText) await sock.sendMessage(jid, { text: replyText }, { quoted: msg });
-                return;
-            }
-
-
         } catch (e) {
             console.error('AI Error:', e.message);
-
-            // ERROR HANDLING SPESIFIK
-            if (axios.isAxiosError(e)) {
-                if (e.response) {
-                    const status = e.response.status;
-                    
-                    // Kena Limit (429)
-                    if (status === 429) {
-                        return await sock.sendMessage(jid, { 
-                            text: '⚠️ *Waduh, pelan-pelan!* Bot kena limit (Rate Limit). Tunggu 1 menit sebelum chat lagi ya.' 
-                        }, { quoted: msg });
-                    }
-                    
-                    // Server Down (503 / 500)
-                    if (status === 503 || status === 500 || status === 502) {
-                        return await sock.sendMessage(jid, { 
-                            text: '😴 *Server lagi turu (Down).* Coba lagi nanti ya, server pusatnya lagi overload.' 
-                        }, { quoted: msg });
-                    }
-
-                    // Error Keamanan Google (Biasanya karena prompt aneh-aneh)
-                    if (status === 400 && e.response.data?.error?.message?.includes("safety")) {
-                         return await sock.sendMessage(jid, { 
-                            text: '❌ *Sensor Aktif!* Topik pembicaraanmu dianggap tidak aman oleh Google.' 
-                        }, { quoted: msg });
-                    }
-                }
+            // Error handling khusus 429/503
+            if (axios.isAxiosError(e) && e.response) {
+                if (e.response.status === 429) return await sock.sendMessage(jid, { text: '⚠️ *Slow down!* Bot kena limit. Tunggu sebentar.' }, { quoted: msg });
+                if (e.response.status === 503) return await sock.sendMessage(jid, { text: '😴 Server lagi sibuk/down.' }, { quoted: msg });
             }
-
-            // Error Umum
-            await sock.sendMessage(jid, { text: '❌ Terjadi kesalahan sistem pada AI.' }, { quoted: msg });
         }
     }
 };

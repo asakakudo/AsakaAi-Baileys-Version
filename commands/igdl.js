@@ -14,24 +14,20 @@ export default {
         try {
             await sock.sendMessage(jid, { text: '_Sabar, lagi ngambil media Instagram..._' }, { quoted: m });
 
-            // 1. Request ke API Ryzumi
             const response = await axios.get(`https://api.ryzumi.vip/api/downloader/igdl`, {
                 params: { url: url }
             });
 
             const res = response.data;
 
-            // 2. Perbaikan Validasi: Cek res.status dan res.data sesuai dokumentasi
             if (!res || res.status !== true || !res.data || res.data.length === 0) {
                 return await sock.sendMessage(jid, { text: 'Gagal: Media Instagram tidak ditemukan atau akun diprivate.' }, { quoted: m });
             }
 
-            // 3. Loop melalui array res.data
             for (const item of res.data) {
                 const mediaUrl = item.url;
-                const mediaType = item.type; // "video" atau "image"
+                const mediaType = item.type; 
 
-                // Download Media menjadi Buffer
                 const bufferResponse = await axios.get(mediaUrl, {
                     responseType: 'arraybuffer',
                     headers: { 'User-Agent': 'Mozilla/5.0' }
@@ -39,7 +35,6 @@ export default {
 
                 const mediaBuffer = Buffer.from(bufferResponse.data);
 
-                // 4. Kirim berdasarkan tipe media yang diberikan API
                 if (mediaType === 'video') {
                     await sock.sendMessage(jid, { 
                         video: mediaBuffer, 

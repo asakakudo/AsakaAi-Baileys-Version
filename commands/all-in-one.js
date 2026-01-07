@@ -12,7 +12,6 @@ export default {
         try {
             await sock.sendMessage(jid, { text: '_Sedang diproses..._' }, { quoted: m });
 
-            // 1. JALUR KHUSUS SPOTIFY
             if (url.includes('spotify.com') || url.includes('spotify.link')) {
                 const spotRes = await axios.get(`https://api.ryzumi.vip/api/downloader/spotify`, { params: { url } });
                 if (spotRes.data.success) {
@@ -36,7 +35,6 @@ export default {
                             artists: meta.artists,
                             album: meta.album || '-',
                             releaseDate: meta.releaseDate || '-',
-                            // Ganti ke link yang pasti aktif ini
                             thumbnail: meta.thumbnail || backupThumb || 'https://cdn-icons-png.flaticon.com/512/2111/2111624.png' 
                         },
                         timestamp: Date.now()
@@ -51,7 +49,6 @@ export default {
 
                         let listText = `🎧 *Spotify Matcher*\nLagu: *${title}*\n\n`;
                         results.forEach((v, i) => {
-                            // Perbaikan: Tambahkan fallback jika duration undefined
                             const dur = v.duration?.timestamp || '??:??';
                             listText += `${i + 1}. ${v.title} (${dur})\n`;
                         });
@@ -70,13 +67,12 @@ export default {
 
             let filteredMedias = [];
             if (res.medias && res.medias.length > 0) {
-                // Perbaikan: Tambahkan filter 'audio' untuk SoundCloud
                 const audios = res.medias.filter(media => media.type === 'audio');
                 const videos = res.medias.filter(media => media.type === 'video');
                 const images = res.medias.filter(media => media.type === 'image');
 
                 if (audios.length > 0) {
-                    filteredMedias = [audios[0]]; // Utamakan audio jika ada (SoundCloud)
+                    filteredMedias = [audios[0]]; 
                 } else if (videos.length > 0) {
                     filteredMedias = [videos[0]]; 
                 } else {
@@ -89,39 +85,32 @@ export default {
             if (filteredMedias.length === 0) throw new Error('Media tidak ditemukan.');
 
             for (const media of filteredMedias) {
-            // ... di dalam loop for (const media of filteredMedias) ...
             const bufferResponse = await axios.get(media.url, { responseType: 'arraybuffer', timeout: 60000 });
             const mediaBuffer = Buffer.from(bufferResponse.data);
 
-            // Buat dekorasi teks
             const detailText = `📁 *Media Downloader*\n\n` +
                             `📌 *Judul :* ${res.title?.substring(0, 150) || '-'}\n` +
                             `🌐 *Sumber :* ${url.split('/')[2]}\n` +
-                            `✅ *Status :* Sukses Terunduh\n\n` +
-                            `_AsakaAiThoughtPartner_`;
+                            `✅ *Status :* Sukses Terunduh\n\n`;
 
             if (media.type === 'audio') {
-                // Kirim detail dulu (Thumbnail + Teks) agar tidak sepi
                 await sock.sendMessage(jid, { 
                     image: { url: res.thumbnail || 'https://cdn-icons-png.flaticon.com/512/2111/2111624.png' }, 
                     caption: detailText 
                 }, { quoted: m });
 
-                // Kirim Audio
                 await sock.sendMessage(jid, { 
                     audio: mediaBuffer, 
                     mimetype: 'audio/mp4',
                     fileName: `${res.title || 'audio'}.mp3`
                 }, { quoted: m });
             } else if (media.type === 'video') {
-                // Kirim Video beserta detailnya di CAPTION
                 await sock.sendMessage(jid, { 
                     video: mediaBuffer, 
                     caption: detailText,
                     mimetype: 'video/mp4'
                 }, { quoted: m });
             } else {
-                // Untuk Gambar
                 await sock.sendMessage(jid, { image: mediaBuffer, caption: detailText }, { quoted: m });
             }
             }

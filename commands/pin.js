@@ -13,14 +13,10 @@ export default {
             }, { quoted: m });
         }
 
-        // Cek apakah input adalah Link (URL) atau Kata Kunci (Query)
         const isUrl = input.startsWith('http') && (input.includes('pinterest.com') || input.includes('pin.it'));
 
         try {
             if (isUrl) {
-                // ==========================================
-                // LOGIKA 1: DOWNLOADER (JIKA INPUT LINK)
-                // ==========================================
                 await sock.sendMessage(jid, { text: '_Sabar, lagi ngambil media dari link Pinterest..._' }, { quoted: m });
 
                 const API_DL = 'https://api.ryzumi.vip/api/downloader/pinterest';
@@ -45,20 +41,16 @@ export default {
                 }
 
             } else {
-                // ==========================================
-                // LOGIKA 2: SEARCH (JIKA INPUT KATA KUNCI)
-                // ==========================================
                 await sock.sendMessage(jid, { text: `🔍 Mencari gambar *${input}*...` }, { quoted: m });
 
                 const API_SEARCH = 'https://api.ryzumi.vip/api/search/pinterest';
                 const response = await axios.get(API_SEARCH, { params: { query: input } });
-                const results = response.data; // Array dari {link, directLink}
+                const results = response.data; 
 
                 if (!results || results.length === 0) {
                     return await sock.sendMessage(jid, { text: '❌ Gambar tidak ditemukan.' }, { quoted: m });
                 }
 
-                // Kita ambil 5 hasil teratas saja
                 const topResults = results.slice(0, 5);
 
                 for (const item of topResults) {

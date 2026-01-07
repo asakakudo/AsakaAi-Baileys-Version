@@ -13,17 +13,10 @@ export default {
 
         try {
             await sock.sendMessage(jid, { text: '_Sabar, lagi download videonya..._' }, { quoted: m });
-
-            // 1. Request ke Endpoint yang BENAR sesuai screenshot kamu (/ttdl)
-            // Note: Axios otomatis mem-parsing JSON, jadi kita akses datanya dari `res.data`
             const res = await axios.get(`https://api.ryzumi.vip/api/downloader/ttdl`, {
                 params: { url: url }
             });
 
-            // 2. Ambil data sesuai struktur di screenshot (data -> data -> data)
-            // Axios response = res.data
-            // API wrapper = res.data.data
-            // Content = res.data.data.data
             const apiResponse = res.data;
             const tikData = apiResponse?.data?.data; 
 
@@ -31,11 +24,8 @@ export default {
                 throw new Error('Video tidak ditemukan di dalam respon API.');
             }
 
-            const videoUrl = tikData.play; // URL Video tanpa watermark
+            const videoUrl = tikData.play; 
             const title = tikData.title || 'No Title';
-
-            // 3. Download Video jadi BUFFER (Teknik yang sama kayak kode lama kamu)
-            // Ini penting biar WA terima file mentah, bukan link doang
             const bufferResponse = await axios.get(videoUrl, {
                 responseType: 'arraybuffer',
                 headers: {
@@ -44,8 +34,6 @@ export default {
             });
 
             const videoBuffer = Buffer.from(bufferResponse.data);
-
-            // 4. Kirim ke WhatsApp (Format Baileys)
             await sock.sendMessage(jid, { 
                 video: videoBuffer, 
                 caption: `✅ *TikTok Success*\n📝 *Title:* ${title}`,

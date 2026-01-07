@@ -24,7 +24,6 @@ async function startBot() {
         makeCacheableSignalKeyStore 
     } = await import('@whiskeysockets/baileys');
 
-    // Load semua command dari folder /commands
     for (const file of commandFiles) {
         try {
             const filePath = `./commands/${file}`;
@@ -32,7 +31,6 @@ async function startBot() {
             
             if (command && command.name) {
                 commands.set(command.name, command);
-                // Daftarkan aliases juga ke map agar pencarian lebih cepat
                 if (command.aliases && Array.isArray(command.aliases)) {
                     command.aliases.forEach(alias => commands.set(alias, command));
                 }
@@ -78,19 +76,16 @@ async function startBot() {
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
 
-        msgStore[msg.key.id] = msg; // Simpan untuk referensi
+        msgStore[msg.key.id] = msg;
 
         const jid = msg.key.remoteJid;
         
-        // === PERBAIKAN DI SINI ===
-        // Menambahkan videoMessage?.caption agar GIF/Video dengan caption terbaca
         const body = msg.message.conversation || 
                     msg.message.extendedTextMessage?.text || 
                     msg.message.imageMessage?.caption ||
                     msg.message.videoMessage?.caption || 
                     "";
 
-        // --- LOGIKA DETEKSI BALASAN ANGKA (1-5) ---
         const isNumber = /^[1-5]$/.test(body.trim());
         if (isNumber && global.db[jid] && global.db[jid].type === 'spotify_search') {
             const session = global.db[jid];
@@ -130,7 +125,6 @@ async function startBot() {
             }
         }
 
-        // 2. LOGIKA AUTO-DOWNLOAD LINK
         const urlRegex = /https?:\/\/(www\.)?(tiktok\.com|instagram\.com|facebook\.com|fb\.watch|twitter\.com|x\.com|threads\.net|pin\.it|pinterest\.com|open\.spotify\.com|spotify\.link)\/\S+/gi;
         const match = body.match(urlRegex);
 
@@ -144,13 +138,10 @@ async function startBot() {
                 return;
             }
         }
-        
-        // 3. LOGIKA COMMAND BIASA
+    
         const parts = body.trim().split(/\s+/);
         const commandName = parts[0].toLowerCase();
         const args = parts.slice(1);
-
-        // Pencarian command (Support Alias)
         const cmd = commands.get(commandName) || 
                     Array.from(commands.values()).find(c => c.aliases && c.aliases.includes(commandName));
 

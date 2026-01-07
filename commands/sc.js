@@ -14,7 +14,6 @@ export default {
         try {
             await sock.sendMessage(jid, { text: '_Sabar, lagi ngambil audio dari SoundCloud..._' }, { quoted: m });
 
-            // 1. Request ke API Ryzumi sesuai dokumentasi
             const API_ENDPOINT = 'https://api.ryzumi.vip/api/downloader/soundcloud';
             const response = await axios.get(API_ENDPOINT, {
                 params: { url: url }
@@ -22,15 +21,13 @@ export default {
 
             const res = response.data;
 
-            // 2. Validasi respon berdasarkan struktur JSON
             if (!res || !res.download_url) {
                 return await sock.sendMessage(jid, { text: 'Gagal: Audio SoundCloud tidak ditemukan atau API sedang bermasalah.' }, { quoted: m });
             }
 
-            const downloadUrl = res.download_url; // URL MP3 dari API
+            const downloadUrl = res.download_url; 
             const title = res.title || 'SoundCloud Audio';
 
-            // 3. Download Audio menjadi Buffer
             const audioBufferRes = await axios.get(downloadUrl, {
                 responseType: 'arraybuffer',
                 headers: { 'User-Agent': 'Mozilla/5.0' }
@@ -38,7 +35,6 @@ export default {
 
             const audioBuffer = Buffer.from(audioBufferRes.data);
 
-            // 4. Kirim Audio ke WhatsApp
             await sock.sendMessage(jid, { 
                 audio: audioBuffer, 
                 mimetype: 'audio/mp4', 

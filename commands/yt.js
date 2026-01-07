@@ -22,14 +22,12 @@ export default {
         try {
             let downloadUrl = null;
             let title = 'YouTube Media';
-
-            // --- SERVER 1: RYZUMI (Timeout 30 detik!) ---
             try {
                 console.log('[YT] Mencoba Server 1 (Ryzumi)...');
                 const endpoint = isAudio ? 'ytmp3' : 'ytmp4';
                 const res = await axios.get(`https://api.ryzumi.vip/api/downloader/${endpoint}`, {
                     params: { url: input },
-                    timeout: 30000 // Kita kasih waktu 30 detik biar Ryzumi nggak timeout
+                    timeout: 30000 
                 });
 
                 if (res.data.url && !res.data.url.includes('Unknown Download URL')) {
@@ -41,8 +39,6 @@ export default {
                 }
             } catch (e) {
                 console.warn(`[YT] Server 1 Gagal/Timeout: ${e.message}`);
-                
-                // --- SERVER 2: ITZPIRE (Backup Super Stabil) ---
                 try {
                     console.log('[YT] Mencoba Server 2 (Itzpire)...');
                     const res = await axios.get(`https://itzpire.com/download/ytdl?url=${input}`, {
@@ -59,8 +55,6 @@ export default {
                     }
                 } catch (e2) {
                     console.warn(`[YT] Server 2 Gagal: ${e2.message}`);
-
-                    // --- SERVER 3: SIPUTZX (Endpoint Baru) ---
                     try {
                         console.log('[YT] Mencoba Server 3 (Siputzx)...');
                         const siputEndpoint = isAudio ? 'ytmp3' : 'ytmp4';
@@ -83,19 +77,16 @@ export default {
             }
 
             if (!downloadUrl) throw new Error('Gagal mendapatkan link download.');
-
-            // --- DOWNLOAD BUFFER ---
             const bufferRes = await axios.get(downloadUrl, {
                 responseType: 'arraybuffer',
                 headers: { 
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36' 
                 },
-                timeout: 60000 // Untuk download file besar, kasih waktu 1 menit
+                timeout: 60000 
             });
 
             const finalBuffer = Buffer.from(bufferRes.data);
 
-            // --- KIRIM KE WA ---
             if (isAudio) {
                 await sock.sendMessage(jid, { 
                     audio: finalBuffer, 
@@ -103,13 +94,10 @@ export default {
                     fileName: `${title}.mp3`
                 }, { quoted: m });
             } else {
-                // DEKORASI VIDEO YOUTUBE
                 const ytCaption = `🎬 *YouTube Downloader*\n\n` +
                                 `📌 *Judul :* ${title}\n` +
                                 `🎥 *Tipe  :* Video (MP4)\n` +
-                                `✅ *Status:* Berhasil Terkirim\n\n` +
-                                `_Terimakasih telah menggunakan AsakaAi!_`;
-
+                                `✅ *Status:* Berhasil Terkirim\n\n`;
                 await sock.sendMessage(jid, { 
                     video: finalBuffer, 
                     caption: ytCaption,
