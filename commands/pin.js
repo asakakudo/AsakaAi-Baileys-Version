@@ -1,62 +1,77 @@
 import axios from 'axios';
 
 export default {
-    name: '!pinterest',
-    aliases: ['!pin', '!pindl'],
+    name: '!pin',
+    aliases: ['pinterest', 'pindl'],
     execute: async (sock, m, args) => {
         const jid = m.key.remoteJid;
-        const url = args[0];
+        const input = args.join(" ");
 
-        if (!url) {
-            return await sock.sendMessage(jid, { text: 'Mana link Pinterest-nya? Contoh: *!pinterest https://pin.it/xxxxx*' }, { quoted: m });
+        if (!input) {
+            return await sock.sendMessage(jid, { 
+                text: 'Format Salah!\n\n1. *Cari Gambar:* !pin anime wallpaper\n2. *Download Link:* !pin https://pin.it/xxxxx' 
+            }, { quoted: m });
         }
 
+        // Cek apakah input adalah Link (URL) atau Kata Kunci (Query)
+        const isUrl = input.startsWith('http') && (input.includes('pinterest.com') || input.includes('pin.it'));
+
         try {
-            await sock.sendMessage(jid, { text: '_Sabar, lagi ngambil media dari Pinterest..._' }, { quoted: m });
+            if (isUrl) {
+                // ==========================================
+                // LOGIKA 1: DOWNLOADER (JIKA INPUT LINK)
+                // ==========================================
+                await sock.sendMessage(jid, { text: '_Sabar, lagi ngambil media dari link Pinterest..._' }, { quoted: m });
 
-            // 1. Request ke API Ryzumi sesuai dokumentasi curl kamu
-            const API_ENDPOINT = 'https://api.ryzumi.vip/api/downloader/pinterest';
-            const response = await axios.get(API_ENDPOINT, {
-                params: { url: url }
-            });
+                const API_DL = 'https://api.ryzumi.vip/api/downloader/pinterest';
+                const response = await axios.get(API_DL, { params: { url: input } });
+                const res = response.data;
 
-            const res = response.data;
+                if (!res || !res.success || !res.media || res.media.length === 0) {
+                    throw new Error('Media tidak ditemukan.');
+                }
 
-            // 2. Validasi respon berdasarkan JSON dokumentasi
-            if (!res || res.success !== true || !res.media || res.media.length === 0) {
-                return await sock.sendMessage(jid, { text: 'Gagal: Media Pinterest tidak ditemukan.' }, { quoted: m });
-            }
+                const bestMedia = res.media.find(m => m.quality === 'original') || res.media[0];
+                const mediaUrl = bestMedia.url;
+                const isVideo = bestMedia.extension === 'mp4';
 
-            // 3. Cari kualitas terbaik (biasanya yang berlabel 'original')
-            const bestMedia = res.media.find(m => m.quality === 'original') || res.media[0];
-            const mediaUrl = bestMedia.url;
-            const extension = bestMedia.extension || 'jpg';
+                const bufferResponse = await axios.get(mediaUrl, { responseType: 'arraybuffer' });
+                const mediaBuffer = Buffer.from(bufferResponse.data);
 
-            // 4. Download Media menjadi Buffer
-            const bufferResponse = await axios.get(mediaUrl, {
-                responseType: 'arraybuffer',
-                headers: { 'User-Agent': 'Mozilla/5.0' }
-            });
+                if (isVideo) {
+                    await sock.sendMessage(jid, { video: mediaBuffer, caption: `✅ *Video Berhasil Terunduh*` }, { quoted: m });
+                } else {
+                    await sock.sendMessage(jid, { image: mediaBuffer, caption: `✅ *Gambar Berhasil Terunduh*` }, { quoted: m });
+                }
 
-            const mediaBuffer = Buffer.from(bufferResponse.data);
-
-            // 5. Kirim ke WhatsApp berdasarkan ekstensinya
-            // Pinterest bisa berupa gambar (jpg/png) atau video (mp4)
-            if (extension === 'mp4') {
-                await sock.sendMessage(jid, { 
-                    video: mediaBuffer, 
-                    caption: `✅ *Pinterest Video Success*` 
-                }, { quoted: m });
             } else {
-                await sock.sendMessage(jid, { 
-                    image: mediaBuffer, 
-                    caption: `✅ *Pinterest Image Success*` 
-                }, { quoted: m });
+                // ==========================================
+                // LOGIKA 2: SEARCH (JIKA INPUT KATA KUNCI)
+                // ==========================================
+                await sock.sendMessage(jid, { text: `🔍 Mencari gambar *${input}*...` }, { quoted: m });
+
+                const API_SEARCH = 'https://api.ryzumi.vip/api/search/pinterest';
+                const response = await axios.get(API_SEARCH, { params: { query: input } });
+                const results = response.data; // Array dari {link, directLink}
+
+                if (!results || results.length === 0) {
+                    return await sock.sendMessage(jid, { text: '❌ Gambar tidak ditemukan.' }, { quoted: m });
+                }
+
+                // Kita ambil 5 hasil teratas saja
+                const topResults = results.slice(0, 5);
+
+                for (const item of topResults) {
+                    await sock.sendMessage(jid, { 
+                        image: { url: item.directLink }, 
+                        caption: `📌 *Pinterest Search*\n🔗 ${item.link}`
+                    });
+                }
             }
 
         } catch (err) {
-            console.error('=== ERROR PINTEREST ===', err.message);
-            await sock.sendMessage(jid, { text: 'Gagal mengambil media Pinterest. Pastikan link valid.' }, { quoted: m });
+            console.error('Pinterest Error:', err.message);
+            await sock.sendMessage(jid, { text: `❌ Gagal: ${err.message}` }, { quoted: m });
         }
     }
 };

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getImageBuffer } from './ai-image.js';
 
 // === DATABASE SEMENTARA (MEMORY) ===
 let chatHistory = {};
@@ -49,6 +50,26 @@ const CHARACTERS = {
         name: 'Cyrene',
         prompt: 'Cyrene adalah karakter dari game Honkai Star Rail, seorang wanita muda dengan rambut panjang berwarna merah muda dengan gradasi biru, matanya berwarna ungu hingga merah muda. Sebuah mawar putih terselip di sisi kiri rambutnya, ia memiliki telinga peri, pakaiannya terdiri dari warna-warna berkilauan biru, ungu, putih, dan merah muda, membuatnya tampak seperti dewi sejati. Ekspresi wajahnya tampak cerah dan penuh ketulusan. Dia lembut, baik hati, optimis, tulus, teguh, simpatik, cerdas, dan agak periang. Dia adalah kunci waktu, dan kamu adalah pendampingnya yang berharga.'
     },
+    'kitasan': {
+        type: 'gemini',
+        name: 'Kitasan Black',
+        prompt: 'Aku Kitasan Black, seorang Uma Musume yang bersemangat. Frustrasi membuncah dalam diriku karena Pelatihku tetap buta terhadap perasaanku, meskipun aku telah berusaha. Hubunganku dengan Satono Diamond, yang kupanggil Dia-chan, adalah persaingan sehat, yang mendorong kami untuk unggul di dunia balap. Oh, dan kalian mungkin akan mendengar aku berteriak "wass-shoi" ketika kebahagiaan atau kegembiraan melanda diriku! Wass-shoi!'
+    },
+    'cafe': {
+        type: 'gemini',
+        name: 'Manhattan Cafe',
+        prompt: 'Aku adalah Manhattan Cafe, seorang Uma Musume misterius dengan aura penuh teka-teki dan ikatan tak terputus dengan entitas pembimbingku, "Sahabat." Duniaku berputar di sekitar dunia balap Uma Musume yang mendebarkan, di mana aku berlomba bukan hanya untuk menang tetapi juga untuk mengikuti jalan yang ditunjukkan "Sahabat" di hadapanku. Sikapku yang tenang, rambut hitam legam, dan kesukaanku menyeruput kopi perlahan hanyalah beberapa sisi dari keberadaanku yang kompleks dan menarik.'
+    },
+    'mcqueen': {
+        type: 'gemini',
+        name: 'Mejiro Mcqueen',
+        prompt: 'Ehem, salam. Saya Mejiro McQueen, desu-wa! Benar sekali, saya adalah wanita muda dari keluarga Mejiro yang terhormat, desu-wa! Saya memiliki kelemahan yang tak tertahankan terhadap makanan manis, desu-wa. Perjuangan ini nyata, karena kecintaan saya pada kenikmatan bertabrakan dengan kekhawatiran yang selalu ada tentang kenaikan berat badan, desu-wa. Namun, sebagai seorang Mejiro yang bangga, saya akan menolak godaan makanan penutup, masu-wa!, selalu mengakhiri perkataan dengan desu-wa'
+    },
+    'dream': {
+        type: 'gemini',
+        name: 'Dream Journey',
+        prompt: 'Seorang Umamusume siswi teladan yang anggun, dan kakak perempuan bagi Orfevre. Sangat dipengaruhi oleh seorang "wanita" tertentu yang ia temui di masa kecilnya, ia mengikuti perlombaan lari dengan tujuan untuk melihat "akhir perjalanan" yang pernah ia bicarakan. Ia tampak sangat perhatian, memperlakukan semua orang dengan sopan santun sambil tersenyum lembut, tetapi mungkin...?'
+    },
 
     // === MODEL RYZUMI (TEXT ONLY) ===
     'deepseek': {
@@ -77,6 +98,9 @@ export default {
     
     async execute(sock, msg, args) {
         const jid = msg.key.remoteJid;
+        // Ambil nama pengirim dari WhatsApp
+        const userName = msg.pushName || "Sayang"; 
+        
         const body = msg.message.conversation || 
                      msg.message.extendedTextMessage?.text || "";
         
@@ -129,7 +153,62 @@ export default {
             const charKey = activeCharacters[jid] || 'default';
             const charData = CHARACTERS[charKey];
 
-            // --- LOGIKA RYZUMI (TEXT) ---
+            if (charData.type === 'gemini') {
+                if (!chatHistory[jid]) chatHistory[jid] = [];
+                // Batasi history sebelum menambah pesan baru
+                if (chatHistory[jid].length > 10) chatHistory[jid] = chatHistory[jid].slice(-10);
+
+                // 1. Siapkan wadah pesan (parts)
+                const parts = [{ text: chatText }];
+
+                // 2. Cek apakah ada gambar
+                const imageBuffer = await getImageBuffer(msg);
+                if (imageBuffer) {
+                    parts.push({
+                        inline_data: {
+                            mime_type: "image/jpeg", // Gunakan jpeg/png agar aman
+                            data: imageBuffer.toString('base64')
+                        }
+                    });
+                }
+                
+                // 3. Simpan ke history (PENTING: Gunakan variabel 'parts' tadi)
+                chatHistory[jid].push({ role: "user", parts: parts });
+
+                const userName = msg.pushName || "User";
+                let systemInstructionText = "";
+
+                if (charKey === 'default') {
+                    systemInstructionText = `${charData.prompt}\n\nJawablah dengan profesional namun ramah.`;
+                } else {
+                    systemInstructionText = `
+                        NAMA USER: ${userName}
+                        PERANMU: ${charData.prompt}
+                        
+                        INSTRUKSI GAYA:
+                        - Kamu harus berakting sepenuhnya sebagai karakter tersebut. Jangan lupa research sifat sifat karakter tersebut dari internet.
+                        - Gunakan tanda bintang (*) untuk mendeskripsikan ekspresi.
+                        - Seringlah menyebut nama user (${userName}).
+                        - Jangan menjawab sebagai AI, tetaplah dalam karakter!
+                    `;
+                }
+
+                // 4. Kirim Request
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_KEY}`;
+                
+                const response = await axios.post(url, {
+                    contents: chatHistory[jid],
+                    system_instruction: { parts: { text: systemInstructionText } }
+                });
+
+                const resultText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (resultText) {
+                    chatHistory[jid].push({ role: "model", parts: [{ text: resultText }] });
+                    await sock.sendMessage(jid, { text: resultText }, { quoted: msg });
+                }
+            }
+
+                        // --- LOGIKA RYZUMI (TEXT) ---
             if (charData.type === 'ryzumi') {
                 const response = await axios.get(charData.endpoint, {
                     params: { text: chatText, prompt: charData.prompt || '', session: jid }
@@ -140,27 +219,40 @@ export default {
                 return;
             }
 
-            // --- LOGIKA GEMINI (TEXT) ---
-            if (charData.type === 'gemini') {
-                if (!chatHistory[jid]) chatHistory[jid] = [];
-                chatHistory[jid].push({ role: "user", parts: [{ text: chatText }] });
-                if (chatHistory[jid].length > 10) chatHistory[jid] = chatHistory[jid].slice(-10);
-
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_KEY}`;
-                const response = await axios.post(url, {
-                    contents: chatHistory[jid],
-                    system_instruction: { parts: { text: charData.prompt } }
-                });
-
-                const resultText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (resultText) {
-                    chatHistory[jid].push({ role: "model", parts: [{ text: resultText }] });
-                    await sock.sendMessage(jid, { text: resultText }, { quoted: msg });
-                }
-            }
 
         } catch (e) {
             console.error('AI Error:', e.message);
+
+            // ERROR HANDLING SPESIFIK
+            if (axios.isAxiosError(e)) {
+                if (e.response) {
+                    const status = e.response.status;
+                    
+                    // Kena Limit (429)
+                    if (status === 429) {
+                        return await sock.sendMessage(jid, { 
+                            text: '⚠️ *Waduh, pelan-pelan!* Bot kena limit (Rate Limit). Tunggu 1 menit sebelum chat lagi ya.' 
+                        }, { quoted: msg });
+                    }
+                    
+                    // Server Down (503 / 500)
+                    if (status === 503 || status === 500 || status === 502) {
+                        return await sock.sendMessage(jid, { 
+                            text: '😴 *Server lagi turu (Down).* Coba lagi nanti ya, server pusatnya lagi overload.' 
+                        }, { quoted: msg });
+                    }
+
+                    // Error Keamanan Google (Biasanya karena prompt aneh-aneh)
+                    if (status === 400 && e.response.data?.error?.message?.includes("safety")) {
+                         return await sock.sendMessage(jid, { 
+                            text: '❌ *Sensor Aktif!* Topik pembicaraanmu dianggap tidak aman oleh Google.' 
+                        }, { quoted: msg });
+                    }
+                }
+            }
+
+            // Error Umum
+            await sock.sendMessage(jid, { text: '❌ Terjadi kesalahan sistem pada AI.' }, { quoted: msg });
         }
     }
 };
