@@ -109,6 +109,13 @@ export default {
         const command = body.trim().split(/\s+/)[0].toLowerCase();
         const subCmd = args[0] ? args[0].toLowerCase() : '';
 
+        if (command === '!reset' || (command === '!ai' && subCmd === 'reset')) {
+                chatHistory[jid] = [];
+                return await sock.sendMessage(jid, { 
+                    text: '🧹 *History Direset!* AI telah melupakan percakapan sebelumnya.' 
+                }, { quoted: msg });
+            }
+
         try {
             if (subCmd === 'set') {
                 const targetChar = args[1]?.toLowerCase();
@@ -122,7 +129,7 @@ export default {
                 
                 let menuText = "🎭 *PILIH KARAKTER AI*\n\n";
                 for (const [key, val] of Object.entries(CHARACTERS)) {
-                    menuText += `🔹 *${key}* - ${val.name}\n`;
+                    menuText += `📌 *${key}* - ${val.name}\n`;
                 }
                 menuText += "\n➡️ Contoh: `!ai set kafka`";
                 return await sock.sendMessage(jid, { text: menuText }, { quoted: msg });
